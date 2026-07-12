@@ -40,10 +40,19 @@ st.caption(
 # ------------------------------------------------------------------
 # 1. Pengaturan koneksi
 # ------------------------------------------------------------------
+# Cek apakah service account sudah dikonfigurasi lewat st.secrets
+# (format: [gcp_service_account] di secrets.toml, sama seperti biasa)
+has_secret_creds = "gcp_service_account" in st.secrets
+
 with st.expander("⚙️ Pengaturan Koneksi", expanded=True):
-    cred_file = st.file_uploader(
-        "Upload credentials.json (Google Service Account)", type="json"
-    )
+    if has_secret_creds:
+        st.success("🔐 Credentials ditemukan di st.secrets — tidak perlu upload manual.")
+        cred_file = None
+    else:
+        st.info("Tidak ada `gcp_service_account` di st.secrets, silakan upload credentials.json.")
+        cred_file = st.file_uploader(
+            "Upload credentials.json (Google Service Account)", type="json"
+        )
     sheet_url = st.text_input(
         "URL Google Spreadsheet",
         value="https://docs.google.com/spreadsheets/d/1wLdsADx0W3IRcA6lGK1kjaSrDci7Z9QqCM7iSU-64TU/",
@@ -148,7 +157,7 @@ def run_pipeline(driver, wait, csv_upload_path, download_dir, label, pipeline_ur
 # 3. Eksekusi
 # ------------------------------------------------------------------
 if run_btn:
-    if cred_file is None:
+    if not has_secret_creds and cred_file is None:
         st.error("Silakan upload file credentials.json terlebih dahulu.")
         st.stop()
     if not sheet_url.strip():
@@ -159,15 +168,17 @@ if run_btn:
         st.stop()
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        # Simpan credentials sementara
-        cred_path = os.path.join(tmp_dir, "credentials.json")
-        with open(cred_path, "wb") as f:
-            f.write(cred_file.getbuffer())
-
         # Hubungkan ke Google Sheets
         try:
             log("🔗 Menghubungkan ke Google Sheets...")
-            gc = gspread.service_account(filename=cred_path)
+            if has_secret_creds:
+                creds_dict = dict(st.secrets["gcp_service_account"])
+                gc = gspread.service_account_from_dict(creds_dict)
+            else:
+                cred_path = os.path.join(tmp_dir, "credentials.json")
+                with open(cred_path, "wb") as f:
+                    f.write(cred_file.getbuffer())
+                gc = gspread.service_account(filename=cred_path)
             sh = gc.open_by_url(sheet_url)
             log("✅ Berhasil terhubung ke Google Sheets.")
         except Exception as e:
