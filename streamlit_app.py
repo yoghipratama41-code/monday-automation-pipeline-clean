@@ -192,6 +192,7 @@ if run_btn:
             options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
         prefs = {
             "download.default_directory": tmp_dir,
             "download.prompt_for_download": False,
@@ -199,10 +200,29 @@ if run_btn:
         }
         options.add_experimental_option("prefs", prefs)
 
+        # Di server minimal (mis. Streamlit Community Cloud), pakai Chromium +
+        # chromedriver yang di-install lewat packages.txt (apt), karena binary
+        # hasil download webdriver-manager sering tidak jalan di container
+        # (exit code 127 / library tidak lengkap). Kalau tidak ada, fallback
+        # ke webdriver-manager untuk pengembangan lokal.
+        system_chromium_paths = ["/usr/bin/chromium", "/usr/bin/chromium-browser"]
+        system_driver_paths = ["/usr/bin/chromedriver"]
+
+        chromium_binary = next((p for p in system_chromium_paths if os.path.exists(p)), None)
+        chromedriver_binary = next((p for p in system_driver_paths if os.path.exists(p)), None)
+
         try:
-            driver = webdriver.Chrome(
-                service=Service(ChromeDriverManager().install()), options=options
-            )
+            if chromium_binary and chromedriver_binary:
+                log(f"🧭 Menggunakan Chromium sistem: `{chromium_binary}`")
+                options.binary_location = chromium_binary
+                driver = webdriver.Chrome(
+                    service=Service(chromedriver_binary), options=options
+                )
+            else:
+                log("🧭 Chromium sistem tidak ditemukan, mengunduh lewat webdriver-manager (mode lokal)...")
+                driver = webdriver.Chrome(
+                    service=Service(ChromeDriverManager().install()), options=options
+                )
         except Exception as e:
             st.error(f"Gagal menjalankan Chrome WebDriver: {e}")
             st.stop()
